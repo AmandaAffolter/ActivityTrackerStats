@@ -1,25 +1,255 @@
----
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
----
+# Wearable Pedometer/Activity Tracker Mini-Study
 
+It is now possible to collect a large amount of data about personal movement using activity monitoring devices such as the Fitbit, Nike Fuelband, Galaxy Gear Fit or Jawbone Up. These type of devices are part of the "quantified self" movement -- a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or to affiliate themselves with the tech community. But, typically, this data remains under-utilized both because the raw data are hard to obtain and because there is a lack of statistical methods and software for processing and interpreting the data that are easily understood by the layperson.
+
+The following short study makes use of data obtained from a personal activity monitoring device. This device collected pedometer (step tracking) data from an anonymous subject at 5 minute intervals through out the day for two months (October ~ November, 2012).
 
 ## Loading and preprocessing the data
 
+To begin this study, the reader will need to load a few libraries. If you have not installed them you will need to install ggplot and dplyr using install.packages("ggplots") and install.packages("dplyr"). You will also need to install the bioconductorLite packages -- source("http://bioconductor.org/biocLite.R") -- and specficially the biocLite("impute") package. These operations must be done manually now, as I wont install packages on the readers machine. 
+
+```{r packageInstalls, results="hide"}
+# load the libraries we will need
+library(ggplot2)
+library(dplyr)
+##source("http://bioconductor.org/biocLite.R")
+##biocLite()
+##biocLite("impute")
+library(impute)
+```
+
+The activity data is provided in the github repo and can be downloaded from the following URL:
+
+https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip
+
+The following R code Chunk provides a method for obtaining the data that accounts for both scenarios where the file needs to be downloaded, unzipped, both or is otherwise present in the root directory where the .Rmd file is located. 
+
+```{r}
+if(file.exists("./activity.csv")){
+                print("Dataset already downloaded and unzipped")
+                print("Loading Data...")
+}else if(file.exists("./repdata-data-activity.zip")){
+                print("Dataset downloaded. Now Unzipping...")
+                unzip("./repdata-data-activity.zip")
+                print("Completed.")
+                print("Loading Data...")
+}else if(!file.exists("./repdata-data-activity.zip")){
+                print("Downloading and unzipping dataset...")
+                download.file("http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip","./repdata-data-activity.zip")
+                unzip("./repdata-data-activity.zip")
+                print("Completed.")
+                print("Loading Data...")
+}
+
+##read file using read.csv
+activityData<-read.csv("./activity.csv", header=TRUE, sep=",", )
+##convert date column from factor to Date class
+activityData$date<-as.Date(activityData$date)
+##provide a summary of the activityData table
+summary(activityData)
+## variables for documenting the observations and variables for the activity dataset
+obs<-nrow(activityData)
+vars<-ncol(activityData)
+```
+
+The file, "activity.csv", consists of `r obs` observation of `r vars` variables.
+
+As you can see in the summary this data set has a number of NA observations, or observations without data. So I also want to create a dataset that has those NAs removed. In this dataset I will also make the date a factor which will help me when I subset the data using dplyr.
+
+```{r}
+activityDataComplete <- na.omit(activityData)
+activityDataComplete$date <- as.factor(activityDataComplete$date)
+##provide a summary of the activityDataComplete table
+summary(activityDataComplete)
+## variables for documenting the observations and variables for the activity dataset
+obs2<-nrow(activityDataComplete)
+vars2<-ncol(activityDataComplete)
+```
+
+The activityDataComplete table consists of only `r obs2` observation of `r vars2` variables.
+
+## What is mean total number of steps taken per day? The median?
+
+To subset the data, calculate the sum, median and mean of the daily step count, I have created a third data set based on the activityDataCleaned dataset. I am using Hadley Wickham's dplyr package. The syntax will be new for many, even those experienced with the R programming language. But the package is fast and elegant and using a new syntax that some are calling a "grammar" for data manipulation. 
+
+```{r}
+calcActivity <- activityDataComplete %.% 
+        group_by(date) %.% 
+        summarise (step.sum = sum(steps), step.mean = round(mean(steps)), step.median=median(steps)) 
+calcActivity
+```
 
 
-## What is mean total number of steps taken per day?
+Now that I have all the data subset and calculated it's really simple to show the distribution of steps across the two month recording window in a histogram with the daily stepcount mean and median provided in the legend.
 
+```{r histo,fig.width=10}
+dMean <- round(mean(calcActivity$step.sum))
+dMedian <- median(calcActivity$step.sum)
 
+p <- ggplot(calcActivity, aes(x=step.sum)) + geom_histogram(binwidth=750, colour="black", fill="white")
+p <- p+geom_vline(aes(xintercept=dMean), color="#80F28A", size = 5, linetype = "solid", alpha=0.45)
+p <- p+geom_vline(aes(xintercept=dMedian), color="#E293C0", linetype = "dotted", size=1, alpha=1)
+p <-  p+ggtitle("A Histogram of the Total Step Counts per Day from October ~ November")+ theme(plot.title = element_text(lineheight=.8, face="bold"))
+p<-p+xlab("StepCount Daily Totals") + ylab("Frequency of Step Count Totals")
+p <- p+geom_text(aes(dMean,0,label = "mean =", hjust=-1, vjust = -23))
+p <- p+geom_text(aes(dMean,0,label = dMean, hjust=-2.5, vjust = -23))
+p <- p+geom_text(aes(dMedian,0,label = dMedian, hjust=-2.5, vjust = -21))
+p <- p+geom_text(aes(dMedian,0,label = "median = ", hjust=-0.5, vjust = -21))
+p
+```
+
+so... 
+
+the mean stepcount (October~November): `r dMean`
+
+the mean stepcount (October~November): `r dMedian`
 
 ## What is the average daily activity pattern?
 
+To observe the pedometer wearer's daily activity we can look at the number of steps in a given interval. This would give us a general trend line for the users activity in a given day. If we take the mean of all intervals across each day in the two month recording window, we might be able to observe the users overall activity patterns.
 
+```{r}
+##make a new complete and clean data set
+activityDataComplete2 <- na.omit(activityData)
+## convert the interval col to a factor
+activityDataComplete2$interval <- as.factor(activityDataComplete2$interval)
+##group by interval factor and average
+calcActivity2 <- activityDataComplete2 %.% 
+        group_by(interval) %.% 
+        summarise (step.mean = mean(steps))
+calcActivity2
+```
+
+```{r lineplot, fig.width=10}
+l <- ggplot(data=calcActivity2, aes(x=as.numeric(levels(interval))[interval], y=step.mean, group=1)) + geom_line(colour="#3A75CD", linetype="solid", size=2) + geom_point(colour="#EB92F7", size=1.5, shape=21, fill="#EB92F7")
+l <- l + scale_x_continuous(breaks=c(0,500,1000, 1500, 2000, 2500))
+l <- l + ggtitle("Average Number of Steps per Interval from October ~ November")+ theme(plot.title = element_text(lineheight=.8, face="bold"))
+l <- l + xlab("StepCount Recording Interval (800 = 8:00AM, etc)") + ylab("Average StepCount")
+l
+```
+
+In order to find the average most active time of the day across the 2 month recording window (aka, the most active interval on average), we would only need to call the following code chunk in R:
+```{r}
+calcActivity2[which.max(calcActivity2$step.mean),]
+```
 
 ## Imputing missing values
 
+Missing values are a problem with any activity tracking dataset. The user occasionaly forgets to wear their pedometer or the battery dies and data will be missing. There are packages like impute and others designed to fill in this missing data with logical equivalents. In this examples we will use a more simple method and use our list of average steps per interval to fill in the missing data.
 
+First we can make an array with the missing values
+```{r}
+missingValues<-activityData[which(is.na(activityData)),]
+```
+
+and we can determine how many missing values there are using either summary orthe following code chunk:
+
+```{r}
+nrow(missingValues)
+```
+
+And now we can loop through our original dataActivity dataset and select the intervals where the step count is equal to NA and replace those "steps" with the step.mean of the same index from our calcactivity2 dataset (which was a the daily averages for each interval minus the NAs).
+
+I will copy the orginal dataset into a new tmp dataset (ad) in order to preserve the original data with NAs
+
+```{r}
+ad<- activityData
+for(i in 1:nrow(ad)){
+        if(is.na(ad[i,]$steps)){
+                tmp<-ad[i,]$interval  
+                ad[i,]$steps <- calcActivity2[which(calcActivity2$interval==tmp),]$step.mean
+        }        
+}
+summary(ad)
+```
+
+now we can perform our original calculations to compute a new histogram. This will be the same calculations as before except the NAs that we removed before have now been imputed with daily averages and we can see the overall effect of the imputation on the mean, median and daily averages.
+
+```{r}
+calcActivity3 <- ad %.% 
+        group_by(date) %.% 
+        summarise (step.sum = sum(steps), step.mean = round(mean(steps)), step.median=median(steps)) 
+calcActivity3
+```
+
+
+```{r histo2,fig.width=10}
+dMean3 <- round(mean(calcActivity3$step.sum))
+dMedian3 <- median(calcActivity3$step.sum)
+
+p <- ggplot(calcActivity3, aes(x=step.sum)) + geom_histogram(binwidth=750, colour="black", fill="white")
+p <- p+geom_vline(aes(xintercept=dMean), color="#80F28A", size = 5, linetype = "solid", alpha=0.45)
+p <- p+geom_vline(aes(xintercept=dMedian), color="#E293C0", linetype = "dotted", size=1, alpha=1)
+p <-  p+ggtitle("A Histogram of the Total Step Counts per Day from October ~ November")+ theme(plot.title = element_text(lineheight=.8, face="bold"))
+p<-p+xlab("StepCount Daily Totals") + ylab("Frequency of Step Count Totals")
+p <- p+geom_text(aes(dMean3,0,label = "mean =", hjust=-1, vjust = -23))
+p <- p+geom_text(aes(dMean3,0,label = dMean3, hjust=-2.5, vjust = -23))
+p <- p+geom_text(aes(dMedian3,0,label = dMedian3, hjust=-2.5, vjust = -21))
+p <- p+geom_text(aes(dMedian3,0,label = "median = ", hjust=-0.5, vjust = -21))
+
+p
+
+```
+
+so, the new calculations are almost the same as the first histogram with the NAs removed. The imputation had only a very negligible effect. 
+
+the mean stepcount (October~November): `r dMean3`
+
+the mean stepcount (October~November): `r dMedian3`
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+The last plot will is designed to explore the differences in behaviour patterns on the weekend vs the weekday. I will make a plot similar to the line plot above, where the steps per interval are are averaged across all the day during the two month recording window. The only difference will be that we will use a new factor we have created that seperates the weekends from the weekdays to look at the two time periods seperately. 
+
+First we need to create a new column in our data frame to be able to select for weekends of weekdays. We will need to convert our date to a Date class.
+```{r}
+ad$date <- as.Date(ad$date)
+class(ad$date)
+
+tmp2<-ad
+```
+
+Then we can create the new column using dplyr and the weekday() function. I will also convert this character to a factor to prepare for plotting using facets.
+
+```{r}
+##mutate a new col using weekdays, an inline ifelse and dplyr
+tmp3 <- mutate(tmp2, day = ifelse(weekdays(ad$date)=="Sunday" | weekdays(ad$date)=="Saturday", "weekend", "weekday"))
+
+## convert to a factor
+tmp3$day<-as.factor(tmp3$day)
+##provide a summary to confirm
+summary(tmp3)
+```
+
+```{r}
+##group by interval factor and average
+tmp3$interval <- as.factor(tmp3$interval)
+
+calcActivity5 <- tmp3 %.% 
+        filter(day=="weekend") %.%
+        group_by(interval) %.% 
+        summarise (step.mean = mean(steps))
+calcActivity5
+
+calcActivity4 <- tmp3 %.% 
+        filter(day=="weekday") %.%
+        group_by(interval) %.% 
+        summarise (step.mean = mean(steps))
+calcActivity4
+```
+
+```{r lineplot3, fig.width=10}
+l <- ggplot(data=calcActivity5, aes(x=as.numeric(levels(interval))[interval], y=step.mean, group=1)) + geom_line(colour="#3A75CD", linetype="solid", size=2) + geom_point(colour="#EB92F7", size=1.5, shape=21, fill="#EB92F7")
+l <- l + scale_x_continuous(breaks=c(0,500,1000, 1500, 2000, 2500))
+l <- l + ggtitle("Average Number of Steps per Interval on Weekends")+ theme(plot.title = element_text(lineheight=.8, face="bold"))
+l <- l + xlab("StepCount Recording Interval (800 = 8:00AM, etc)") + ylab("Average StepCount")
+l
+```
+```{r lineplot4, fig.width=10}
+r <- ggplot(data=calcActivity4, aes(x=as.numeric(levels(interval))[interval], y=step.mean, group=1)) + geom_line(colour="#3A75CD", linetype="solid", size=2) + geom_point(colour="#EB92F7", size=1.5, shape=21, fill="#EB92F7")
+r <- r + scale_x_continuous(breaks=c(0,500,1000, 1500, 2000, 2500))
+r <- r + ggtitle("Average Number of Steps per Interval on WeekDays")+ theme(plot.title = element_text(lineheight=.8, face="bold"))
+r <- r + xlab("StepCount Recording Interval (800 = 8:00AM, etc)") + ylab("Average StepCount")
+r
+```
+```
